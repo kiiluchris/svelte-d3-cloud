@@ -1,7 +1,4 @@
-
-
 <script>
-  import { onMount } from "svelte";
   import { createEventDispatcher } from "svelte";
   import cloud from "d3-cloud";
   import { select } from "d3-selection";
@@ -35,13 +32,15 @@
   export let maxRotate = 0;
   export let scheme = "schemeTableau10";
   export let padding = 10;
-  export let backgroundColor = "#fff"
+  export let backgroundColor = "#fff";
 
-  // count max word occurence
-  const maxWordCount = words.reduce((prev, cur) =>
-    prev.count < cur.count ? prev.count : cur.count
-  );
-
+  // count max word occurrence
+  const calculateMaxWordCount = (words) =>
+    words.reduce((prev, cur) => (prev.count < cur.count ? prev : cur), {
+      count: 1,
+    }).count;
+  let maxWordCount = calculateMaxWordCount(words);
+  $: maxWordCount = calculateMaxWordCount(words);
   // text color scheme
   const fill = scaleOrdinal(color_scheme[scheme]);
 
@@ -51,60 +50,79 @@
   const onWordMouseOut = (d) => dispatch("mouseout", d);
   const onWordMouseMove = (d) => dispatch("mousemove", d);
 
-  const layout = cloud()
-    .size([width, height])
-    .words(words)
-    .padding(padding)
-    .rotate(() => ~~(Math.random() * maxRotate) + minRotate)
-    .font(font)
-    .fontSize(
-      (d) =>  Math.floor((d.count / maxWordCount) * maxFontSize)
-    )
-    .on("end", draw);
+  const wordCloudLayout = (node, words) => {
+    const createLayout = (words) =>
+      cloud()
+        .size([width, height])
+        .words(words)
+        .padding(padding)
+        .rotate(() => ~~(Math.random() * maxRotate) + minRotate)
+        .font(font)
+        .fontSize((d) => Math.floor((d.count / maxWordCount) * maxFontSize));
+    const startLayout = (words) => {
+      if (!words.length) {
+        return;
+      }
+      const layout = createLayout(words);
+      layout.on("end", draw(node, layout));
+      layout.start();
+    };
+    const cleanLayout = () => {
+      select(node).select("svg").remove();
+    };
+    startLayout(words);
+    return {
+      update: (newWords) => {
+        cleanLayout();
+        startLayout(newWords);
+      },
+      destroy: () => {
+        cleanLayout();
+      },
+    };
+  };
 
-  function draw(words) {
-    select("#wordcloud")
-      .append("svg")
-      .attr("width", layout.size()[0])
-      .attr("height", layout.size()[1])
-      .append("g")
-      .attr(
-        "transform",
-        "translate(" + layout.size()[0] / 2 + "," + layout.size()[1] / 2 + ")"
-      )
-      .selectAll("text")
-      .data(words)
-      .enter()
-      .append("text")
-      .style("font-size", (d) => d.size + "px")
-      .style("font-family", font)
-      .style("fill", (_d, i) => fill(i))
-      .attr("text-anchor", "middle")
-      .attr(
-        "transform",
-        (d) => "translate(" + [d.x, d.y] + ")rotate(" + d.rotate + ")"
-      )
-      .text((d) => d.text)
-      .on("click", onWordClick)
-      .on("mouseover", onWordMouserOver)
-      .on("mouseout", onWordMouseOut)
-      .on("mousemove", onWordMouseMove);
+  function draw(target, layout) {
+    return function (words) {
+      select(target)
+        .append("svg")
+        .attr("width", layout.size()[0])
+        .attr("height", layout.size()[1])
+        .append("g")
+        .attr(
+          "transform",
+          "translate(" + layout.size()[0] / 2 + "," + layout.size()[1] / 2 + ")"
+        )
+        .selectAll("text")
+        .data(words)
+        .enter()
+        .append("text")
+        .style("font-size", (d) => d.size + "px")
+        .style("font-family", font)
+        .style("fill", (_d, i) => fill(i))
+        .attr("text-anchor", "middle")
+        .attr(
+          "transform",
+          (d) => "translate(" + [d.x, d.y] + ")rotate(" + d.rotate + ")"
+        )
+        .text((d) => d.text)
+        .on("click", onWordClick)
+        .on("mouseover", onWordMouserOver)
+        .on("mouseout", onWordMouseOut)
+        .on("mousemove", onWordMouseMove);
+    };
   }
-
-  // mount
-  onMount(async () => {
-    layout.start();
-  });
-
 </script>
 
-<div id="wordcloud" style="background-color: {backgroundColor};"/>
+<div
+  class="wordcloud"
+  use:wordCloudLayout={words}
+  style="background-color: {backgroundColor};"
+/>
 
 <style>
-    div#wordcloud {        
-        width: fit-content; 
-        height: fit-content;        
-    }
+  div.wordcloud {
+    width: fit-content;
+    height: fit-content;
+  }
 </style>
-
-
